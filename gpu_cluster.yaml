@@ -1,0 +1,87 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name:  bogdan-cc
+
+# The maximum number of workers nodes to launch in addition to the head
+# node.
+max_workers: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws  
+    region: us-east-1
+    profile: default
+    cache_stopped_nodes: true
+auth:
+    ssh_user: ubuntu
+    #ssh_private_key: ~/.ssh/ray-ci.pem
+
+docker:
+  #py311 image is currently problematic
+  image:  rayproject/ray:2.44.1-py311-gpu #920713614559.dkr.ecr.us-east-1.amazonaws.com/ray-serve-vllm:latest
+  container_name: "ray_2.4"
+  pull_before_run: True
+  run_options:
+   - --ulimit nofile=65536:65536
+
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+available_node_types:
+    ray.head.default:
+        #resources: {"CPU": 0}
+        node_config:
+
+            #KeyName: ray-ci
+            InstanceType: g5.xlarge #t2.xlarge
+            ImageId: ami-034e1df76446b16b2
+            IamInstanceProfile:
+                Arn: arn:aws:iam::920713614559:instance-profile/ray-head-v1
+            BlockDeviceMappings:
+            - DeviceName: /dev/sda1
+              Ebs:
+                VolumeSize: 150
+
+    ray.worker.default:
+        min_workers: 2
+        max_workers: 5
+        resources: {}
+        node_config:
+            #KeyName: ray-ci
+            InstanceType: g5.xlarge
+            ImageId: ami-034e1df76446b16b2
+            #InstanceMarketOptions:
+                #MarketType: spot
+
+            IamInstanceProfile:
+                Arn: arn:aws:iam::920713614559:instance-profile/ray-worker-v1
+            BlockDeviceMappings:
+            - DeviceName: /dev/sda1
+              Ebs:
+                VolumeSize: 150
+    
+          
+file_mounts: {}
+
+#Head node at AWS needs a umlimit increase to avoid GCS error             
+setup_commands: # Set up each node.
+    - sudo apt update && sudo apt install python-is-python3 -y
+    - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
+#runs before the docker container is started
+initialization_commands:
+  - |
+    mkdir -p $HOME/.docker && \
+      echo '{ "credsStore": "ecr-login" }' > $HOME/.docker/config.json && \
+      sudo apt update && \
+      sudo apt install -y amazon-ecr-credential-helper
+
+#Head node at AWS needs a umlimit increase to avoid GCS error
+#head_setup_commands:
+#    - cp /home/ray/ray_bootstrap_key.pem /root/ray_bootstrap_key.pem
+
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --ray-client-server-port=10001 --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
+
+worker_start_ray_commands:
+    - ray stop
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+

@@ -1,0 +1,40 @@
+# This file was generated using the `serve build` command on Ray v2.34.0.
+
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
+logging_config:
+  encoding: TEXT
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
+applications:
+- name: app
+  route_prefix: /inference
+  import_path: serve_model:llm_app
+  runtime_env:
+    pip:
+      - vllm==0.7.2
+    env_vars:
+          MODEL_ID: "casperhansen/mistral-nemo-instruct-2407-awq" 
+          TENSOR_PARALLELISM: "1"
+          PIPELINE_PARALLELISM: "1"
+          GPU_MEMORY_UTILIZATION: "0.95"
+          SWAP_SPACE: "3"
+          MAX_MODEL_LEN: "8192"
+          HUGGING_FACE_HUB_TOKEN: "<put token here>"
+- name: llm_proxy
+  route_prefix: /proxy
+  import_path: llm_router_proxy.llm
+  runtime_env:
+    pip:
+      - torch
+      - huggingface_hub
+      - transformers
+    env_vars:
+      HUGGING_FACE_HUB_TOKEN: "<put token here>"
